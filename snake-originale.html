@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prato Luminoso — Snake</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, sans-serif;
+      background: #101923;
+      color: #eff8ed;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: radial-gradient(ellipse at top, #213a3b, #101923 70%);
+    }
+    main { width: min(94vw, 680px); text-align: center; }
+    h1 { margin: 0 0 4px; letter-spacing: .04em; }
+    p { margin: 4px 0 14px; color: #b7c8c0; }
+    .bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+      color: #d7e8d8;
+    }
+    #score { font-weight: 700; }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 9px 16px;
+      color: #10211a;
+      background: #b8ef79;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover { background: #d0ffa0; }
+    .board {
+      position: relative;
+      overflow: hidden;
+      border: 2px solid #5b7d66;
+      border-radius: 16px;
+      box-shadow: 0 16px 50px #0008;
+      background: #1b302c;
+    }
+    canvas { display: block; width: 100%; height: auto; touch-action: none; }
+    #message {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #0c1713b8;
+      font-size: clamp(18px, 4vw, 27px);
+      font-weight: 700;
+    }
+    #message[hidden] { display: none; }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(3, 54px);
+      grid-template-rows: repeat(2, 45px);
+      justify-content: center;
+      gap: 5px;
+      margin-top: 12px;
+    }
+    .controls button { border-radius: 12px; padding: 0; font-size: 19px; }
+    .controls button:nth-child(1) { grid-column: 2; }
+    .controls button:nth-child(2) { grid-column: 1; grid-row: 2; }
+    .controls button:nth-child(3) { grid-column: 2; grid-row: 2; }
+    .controls button:nth-child(4) { grid-column: 3; grid-row: 2; }
+    @media (min-width: 700px) { .controls { display: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Prato Luminoso</h1>
+    <p>Raccogli le bacche, cresci e non urtare il bordo o la coda.</p>
+    <div class="bar">
+      <span id="score">Punti: 0</span>
+      <button id="restart" type="button">Nuova partita</button>
+    </div>
+    <div class="board">
+      <canvas id="game" width="600" height="420" aria-label="Campo di gioco"></canvas>
+      <div id="message">Premi una freccia o WASD per iniziare</div>
+    </div>
+    <div class="controls" aria-label="Comandi touch">
+      <button data-dir="up" aria-label="Su">↑</button>
+      <button data-dir="left" aria-label="Sinistra">←</button>
+      <button data-dir="down" aria-label="Giù">↓</button>
+      <button data-dir="right" aria-label="Destra">→</button>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const canvas = document.querySelector("#game");
+      const ctx = canvas.getContext("2d");
+      const message = document.querySelector("#message");
+      const scoreLabel = document.querySelector("#score");
+      const cell = 20;
+      const columns = canvas.width / cell;
+      const rows = canvas.height / cell;
+      const directions = {
+        up: { x: 0, y: -1 }, down: { x: 0, y: 1 },
+        left: { x: -1, y: 0 }, right: { x: 1, y: 0 }
+      };
+      let snake, direction, nextDirection, berry, score, running, ended, lastStep;
+
+      function placeBerry() {
+        do {
+          berry = { x: Math.floor(Math.random() * columns), y: Math.floor(Math.random() * rows) };
+        } while (snake.some(part => part.x === berry.x && part.y === berry.y));
+      }
+
+      function reset() {
+        snake = [{ x: 15, y: 10 }, { x: 14, y: 10 }, { x: 13, y: 10 }];
+        direction = directions.right;
+        nextDirection = direction;
+        score = 0;
+        running = false;
+        ended = false;
+        lastStep = 0;
+        placeBerry();
+        scoreLabel.textContent = "Punti: 0";
+        message.textContent = "Premi una freccia o WASD per iniziare";
+        message.hidden = false;
+        draw();
+      }
+
+      function turn(name) {
+        const proposed = directions[name];
+        if (!proposed || (proposed.x + direction.x === 0 && proposed.y + direction.y === 0)) return;
+        nextDirection = proposed;
+        if (!running && !ended) {
+          running = true;
+          message.hidden = true;
+        }
+      }
+
+      function step() {
+        direction = nextDirection;
+        const head = { x: snake[0].x + direction.x, y: snake[0].y + direction.y };
+        const ate = head.x === berry.x && head.y === berry.y;
+        const body = ate ? snake : snake.slice(0, -1);
+        if (head.x < 0 || head.x >= columns || head.y < 0 || head.y >= rows ||
+            body.some(part => part.x === head.x && part.y === head.y)) {
+          running = false;
+          ended = true;
+          message.textContent = `Partita finita — ${score} punti. Premi “Nuova partita”.`;
+          message.hidden = false;
+          return;
+        }
+        snake.unshift(head);
+        if (ate) {
+          score += 10;
+          scoreLabel.textContent = `Punti: ${score}`;
+          placeBerry();
+        } else {
+          snake.pop();
+        }
+      }
+
+      function draw() {
+        ctx.fillStyle = "#1b302c";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#ffffff0b";
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= canvas.width; x += cell) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+        for (let y = 0; y <= canvas.height; y += cell) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        }
+        ctx.fillStyle = "#ffca68";
+        ctx.beginPath();
+        ctx.arc(berry.x * cell + cell / 2, berry.y * cell + cell / 2, cell * .38, 0, Math.PI * 2);
+        ctx.fill();
+        snake.forEach((part, index) => {
+          ctx.fillStyle = index === 0 ? "#d9ff94" : "#91d36b";
+          ctx.beginPath();
+          ctx.roundRect(part.x * cell + 1, part.y * cell + 1, cell - 2, cell - 2, 6);
+          ctx.fill();
+        });
+        const head = snake[0];
+        ctx.fillStyle = "#183222";
+        const eyeX = head.x * cell + cell / 2 + direction.x * 4;
+        const eyeY = head.y * cell + cell / 2 + direction.y * 4;
+        ctx.beginPath();
+        ctx.arc(eyeX - direction.y * 4, eyeY + direction.x * 4, 1.7, 0, Math.PI * 2);
+        ctx.arc(eyeX + direction.y * 4, eyeY - direction.x * 4, 1.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function frame(time) {
+        if (running && time - lastStep > 105) {
+          step();
+          lastStep = time;
+        }
+        draw();
+        requestAnimationFrame(frame);
+      }
+
+      window.addEventListener("keydown", event => {
+        const keys = {
+          ArrowUp: "up", w: "up", W: "up",
+          ArrowDown: "down", s: "down", S: "down",
+          ArrowLeft: "left", a: "left", A: "left",
+          ArrowRight: "right", d: "right", D: "right"
+        };
+        if (keys[event.key]) {
+          event.preventDefault();
+          turn(keys[event.key]);
+        }
+      });
+      document.querySelectorAll("[data-dir]").forEach(button => {
+        button.addEventListener("click", () => turn(button.dataset.dir));
+      });
+      document.querySelector("#restart").addEventListener("click", reset);
+      reset();
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
